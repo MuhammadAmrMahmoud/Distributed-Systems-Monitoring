@@ -42,13 +42,13 @@ func (r *DbRepository) RegisterService(ctx context.Context, service *models.Exte
 	if service.URL == "" {
 		return errors.New("service url is empty")
 	}
-	if service.HTTPMethod == "" {
+	if (service.Protocol == "HTTP" || service.Protocol == "") && service.HTTPMethod == "" {
 		return errors.New("service http method is empty")
 	}
 	if service.TimeoutSeconds == 0 || service.TimeoutSeconds < 0 {
 		return errors.New("service timeout is invalid")
 	}
-	if service.HTTPMethod != "GET" && service.HTTPMethod != "POST" && service.HTTPMethod != "PUT" && service.HTTPMethod != "DELETE" && service.HTTPMethod != "PATCH" {
+	if (service.Protocol == "HTTP" || service.Protocol == "") && (service.HTTPMethod != "GET" && service.HTTPMethod != "POST" && service.HTTPMethod != "PUT" && service.HTTPMethod != "DELETE" && service.HTTPMethod != "PATCH") {
 		return errors.New("service http method is invalid")
 	}
 	if service.FailureThreshold == 0 || service.FailureThreshold < 0 {
