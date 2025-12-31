@@ -1,0 +1,25 @@
+{
+  "postgresql": {
+    "host": "postgres",
+    "port": 5432,
+    "user": "health_user",
+    "password": "health_password",
+    "database": "health_db",
+    "sslmode": "disable",
+    "max_open_conns": 25,
+    "max_idle_conns": 10
+  },
+  "rabbitmq": {
+    "host": "rabbitmq",
+    "port": 5672,
+    "username": "guest",
+    "password": "guest",
+    "vhost": "/",
+    "queue_name": "health_checks",
+    "exchange": "",
+    "routing_key": "health_checks"
+  },
+  "server": {
+    "address": ":8080"
+  }
+}
