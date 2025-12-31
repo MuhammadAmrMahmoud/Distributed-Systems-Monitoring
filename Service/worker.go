@@ -1,6 +1,7 @@
 package service
 
 import (
+	"Distributed-Health-Monitoring/grpc"
 	"Distributed-Health-Monitoring/models"
 	"context"
 	"encoding/json"
@@ -44,7 +45,7 @@ func (e *Engine) StartWorker(amqpURL, queueName string) error {
 	msgs, err := ch.Consume(
 		queueName,
 		"",
-		false, 
+		false,
 		false,
 		false,
 		false,
@@ -70,38 +71,66 @@ func (e *Engine) StartWorker(amqpURL, queueName string) error {
 			continue
 		}
 
-		req, err := http.NewRequest(
-			job.Method,
-			job.URL, 
-			nil,
-		)
-		if err != nil {
-			log.Printf("[WORKER] invalid_request service=%s err=%v", service.Name, err)
-			msg.Nack(false, false)
-			continue
-		}
-
-		client := &http.Client{
-			Timeout: job.Timeout,
-		}
-
-		start := time.Now()
-		resp, err := client.Do(req)
-		latencyMs := time.Since(start).Milliseconds()
+		latencyMs := int64(0)
 
 		status := "DOWN"
 		statusCode := 0
 		errorMsg := ""
 		success := false
 
-		if err != nil {
-			errorMsg = err.Error()
-		} else {
-			defer resp.Body.Close()
-			statusCode = resp.StatusCode
-			if resp.StatusCode < 400 {
+		switch service.Protocol { //	Switch case to send to the right protocol
+		case "gRPC":
+			res := grpc.Check_gRPC(service.URL, time.Duration(service.TimeoutSeconds))
+			if res.Error != nil {
+				log.Printf("[WORKER] service_not_healthy service=%s err=%v", service.Name, res.Error)
+				status = "DOWN"
+				latencyMs = int64(res.Latency.Abs().Seconds())
+				statusCode = int(res.StatusCode)
+				errorMsg = res.Error.Error()
+				success = false
+			}
+
+			if res.IsHealthy {
 				status = "UP"
+				latencyMs = int64(res.Latency.Abs().Seconds())
+				statusCode = int(res.StatusCode)
 				success = true
+			}
+
+		default:
+			req, err := http.NewRequest(
+				job.Method,
+				job.URL,
+				nil,
+			)
+			if err != nil {
+				log.Printf("[WORKER] invalid_request service=%s err=%v", service.Name, err)
+				msg.Nack(false, false)
+				continue
+			}
+
+			client := &http.Client{
+				Timeout: job.Timeout,
+			}
+
+			start := time.Now()
+			resp, err := client.Do(req)
+			latencyMs = time.Since(start).Milliseconds()
+
+			status = "DOWN"
+			statusCode = 0
+			errorMsg = ""
+			success = false
+
+			if err != nil {
+				errorMsg = err.Error()
+			} else {
+				defer resp.Body.Close()
+				statusCode = resp.StatusCode
+				if resp.StatusCode < 400 {
+					status = "UP"
+					success = true
+				}
 			}
 		}
 
@@ -125,7 +154,7 @@ func (e *Engine) StartWorker(amqpURL, queueName string) error {
 		// 🔹 Broadcast only on transition
 		if stateChange != nil {
 			LogStateTransition(service.Name, stateChange) // Log the transition in the db
-			BroadcastStateChange(*service, stateChange) // Broadcast the transition with the WebSocket endpoint
+			BroadcastStateChange(*service, stateChange)   // Broadcast the transition with the WebSocket endpoint
 		}
 
 		log.Printf(

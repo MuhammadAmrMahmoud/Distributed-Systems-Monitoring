@@ -15,6 +15,7 @@ type Config struct {
 	PostgreSQL PostgreSQL `json:"postgresql"`
 	RabbitMQ   RabbitMQ   `json:"rabbitmq"`
 	Server     Server     `json:"server"`
+	Auth       AuthConfig `json:"auth"`
 }
 
 type PostgreSQL struct {
@@ -42,6 +43,12 @@ type RabbitMQ struct {
 type Server struct {
 	Address string `json:"address"`
 }
+
+type AuthConfig struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 
 // LoadConfig reads the config file and unmarshals it
 func LoadConfig(filePath string) (*Config, error) {

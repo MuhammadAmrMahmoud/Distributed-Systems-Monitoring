@@ -47,6 +47,8 @@ func NewEngine() (*Engine, error) {
 
 	ginEngine := gin.Default()
 
+	
+
 	return &Engine{
 		Repo:   NuRepository,
 		router: ginEngine,
@@ -104,6 +106,7 @@ func (e *Engine) SetupRoutes() {
 	{
 		// External services routes
 		externalServices := health.Group("/externalServices")
+		externalServices.Use(BasicAuthMiddleware(e.Cnfg.Auth))
 		{
 			externalServices.POST("/register", e.RegisterService)
 			externalServices.GET("/list", e.ListServices)
@@ -124,6 +127,20 @@ func (e *Engine) SetupRoutes() {
 func (e *Engine) Router() *gin.Engine {
 	return e.router
 }
+
+func BasicAuthMiddleware(cfg config.AuthConfig) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, pass, ok := c.Request.BasicAuth()
+		if !ok || user != cfg.Username || pass != cfg.Password {
+			c.AbortWithStatusJSON(401, gin.H{
+				"error": "unauthorized",
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
 
 func (e *Engine) ListServices(c *gin.Context) {
 	services, err := e.Repo.GetAllServices(c.Request.Context())

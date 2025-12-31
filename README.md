@@ -11,9 +11,11 @@ A distributed, event-driven system for monitoring external services and broadcas
 - [Technology Stack](#technology-stack)
 - [Prerequisites](#prerequisites)
 - [Configuration](#configuration)
+- [Authentication](#authentication)
 - [Installation & Setup](#installation--setup)
 - [Running the Application](#running-the-application)
 - [API Documentation](#api-documentation)
+- [gRPC Health Check](#grpc-health-check)
 - [WebSocket Events](#websocket-events)
 - [Database Schema](#database-schema)
 - [System Components](#system-components)
@@ -133,6 +135,16 @@ This system decouples monitoring tasks into three independent, scalable componen
 - PostgreSQL container with persistent volumes
 - RabbitMQ with management UI
 
+✅ **gRPC Health Checks**
+- Monitor gRPC services with latency tracking
+- Connection state verification
+- Configurable timeouts
+
+✅ **Security**
+- Basic authentication on protected endpoints
+- Username/password configuration
+- Configurable per endpoint
+
 ## Technology Stack
 
 | Component | Technology | Version |
@@ -140,6 +152,7 @@ This system decouples monitoring tasks into three independent, scalable componen
 | Language | Go | 1.25.1 |
 | Web Framework | Gin | v1.11.0 |
 | WebSocket | Gorilla WebSocket | v1.5.3 |
+| gRPC | Google gRPC | Latest |
 | Message Queue | RabbitMQ | 3.13-management |
 | Database | PostgreSQL | 16-alpine |
 | ORM | GORM | Latest |
@@ -187,12 +200,68 @@ The application is configured via `config.json`:
 }
 ```
 
-### Environment Variables
+## Authentication
 
-Optionally set via environment:
-```bash
-CONFIG_PATH=/app/config.json
+The system implements **HTTP Basic Authentication** for protected endpoints.
+
+### Protected Endpoints
+
+The following endpoints require authentication:
+- `POST /health-app/externalServices/register` - Register a new service
+- `GET /health-app/externalServices/list` - List all services
+
+### Configuration
+
+Basic auth credentials are configured in `config.json` for simplicity:
+
+```json
+{
+  "auth": {
+    "username": "admin",
+    "password": "secure_password"
+  }
+}
 ```
+
+### Using Basic Auth
+
+**cURL Example:**
+```bash
+curl -X GET http://localhost:8080/health-app/externalServices/list \
+  -u admin:secure_password
+```
+
+**JavaScript/Fetch Example:**
+```javascript
+const credentials = btoa('admin:secure_password');
+const response = await fetch('http://localhost:8080/health-app/externalServices/list', {
+  headers: {
+    'Authorization': 'Basic ' + credentials
+  }
+});
+```
+
+**Python Example:**
+```python
+import requests
+from requests.auth import HTTPBasicAuth
+
+response = requests.get(
+    'http://localhost:8080/health-app/externalServices/list',
+    auth=HTTPBasicAuth('admin', 'secure_password')
+)
+```
+
+### Unauthorized Response
+
+If credentials are missing or incorrect:
+```json
+{
+  "error": "unauthorized"
+}
+```
+
+HTTP Status: `401 Unauthorized`
 
 ## Installation & Setup
 
@@ -401,6 +470,66 @@ ws.onclose = () => {
 ws.onerror = (error) => {
   console.error("WebSocket error:", error);
 };
+```
+
+## gRPC Health Check
+
+The system includes a **gRPC health checker** for monitoring gRPC services alongside HTTP services.
+
+### Overview
+
+The gRPC health check module allows you to monitor gRPC service endpoints by attempting to establish connections and verifying their availability.
+
+**Location:** [grpc/grpc.go](grpc/grpc.go)
+
+### Features
+
+- **Connection State Verification**: Checks if gRPC service is in `Ready` state
+- **Latency Tracking**: Measures connection establishment time
+- **Error Handling**: Captures connection errors with detailed diagnostics
+- **Timeout Support**: Configurable timeout per check
+
+### gRPC Health Check Function
+
+```go
+func Check_gRPC(address string, timeout time.Duration) models.GRPCHealthResult
+```
+
+**Parameters:**
+- `address`: gRPC service address (e.g., `localhost:50051`)
+- `timeout`: Maximum time to wait for connection (e.g., `5 * time.Second`)
+
+**Returns:**
+```go
+type GRPCHealthResult struct {
+  IsHealthy  bool              // Whether service is reachable
+  Latency    time.Duration     // Connection time
+  StatusCode connectivity.State // gRPC connection state
+  Error      error             // Error if connection failed
+}
+```
+
+### Connection States
+
+| State | Meaning |
+|-------|---------|
+| `Ready` | Service is healthy and ready |
+| `Connecting` | Attempting to connect |
+| `Idle` | Connection idle |
+| `TransientFailure` | Temporary connection issue |
+| `Shutdown` | Service shutdown |
+
+### Usage Example
+
+**Checking a gRPC Service:**
+```go
+result := grpc.Check_gRPC("localhost:50051", 5*time.Second)
+
+if result.IsHealthy {
+  fmt.Printf("✓ gRPC service UP (latency: %dms)\n", result.Latency.Milliseconds())
+} else {
+  fmt.Printf("✗ gRPC service DOWN: %v\n", result.Error)
+}
 ```
 
 ## Database Schema

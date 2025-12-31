@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"google.golang.org/grpc/connectivity"
 )
 
 // ExternalService represents a service to be monitored
@@ -12,6 +13,7 @@ type ExternalService struct {
 	Name                string     `json:"name" gorm:"type:varchar(255);not null;uniqueIndex"`
 	URL                 string     `json:"url" gorm:"type:varchar(500);not null"`
 	HTTPMethod          string     `json:"http_method" gorm:"type:varchar(10);not null;default:'GET'"`
+	Protocol            string     `json:"protocol" gorm:"type:varchar(10);not null;default:'HTTP'"`
 	Interval            int64      `json:"interval" gorm:"type:bigint;not null;default:60"` // check interval in seconds
 	TimeoutSeconds      int64      `json:"timeout_seconds" gorm:"type:bigint;not null;default:10"`
 	FailureThreshold    int64      `json:"failure_threshold" gorm:"type:bigint;not null;default:3"`    // consecutive failures before marking as down
@@ -39,7 +41,6 @@ type StateChange struct {
 	To   string
 }
 
-
 type Client struct {
 	Conn *websocket.Conn
 	Send chan []byte
@@ -52,6 +53,13 @@ type ServiceStateChangeEvent struct {
 	From      string    `json:"from"`
 	To        string    `json:"to"`
 	Timestamp time.Time `json:"timestamp"`
+}
+
+type GRPCHealthResult struct {
+	IsHealthy  bool
+	Latency    time.Duration
+	StatusCode connectivity.State // IDLE, CONNECTING, READY, TRANSIENT_FAILURE, SHUTDOWN
+	Error      error
 }
 
 // TableName specifies the table name for ExternalService

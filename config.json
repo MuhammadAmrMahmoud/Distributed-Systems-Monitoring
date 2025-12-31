@@ -21,5 +21,9 @@
   },
   "server": {
     "address": ":8080"
+  },
+  "auth": {
+    "username": "admin",
+    "password": "secret123"
   }
 }
