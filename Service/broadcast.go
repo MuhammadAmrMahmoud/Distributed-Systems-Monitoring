@@ -1,35 +1,19 @@
 package service
 
 import (
-	"Distributed-Health-Monitoring/Repository"
 	"Distributed-Health-Monitoring/models"
 	"encoding/json"
 	"log"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 var GlobalHub *Hub
 
-type Client struct {
-	conn *websocket.Conn
-	send chan []byte
-}
-
-type ServiceStateChangeEvent struct {
-	Type      string    `json:"type"` // service_state_change
-	ServiceID uint      `json:"service_id"`
-	Name      string    `json:"name"`
-	From      string    `json:"from"`
-	To        string    `json:"to"`
-	Timestamp time.Time `json:"timestamp"`
-}
 func BroadcastStateChange(
 	service models.ExternalService,
-	change *Repository.StateChange,
+	change *models.StateChange,
 ) {
-	event := ServiceStateChangeEvent{
+	event := models.ServiceStateChangeEvent{
 		Type:      "service_state_change",
 		ServiceID: service.ID,
 		Name:      service.Name,
@@ -48,18 +32,18 @@ func BroadcastStateChange(
 }
 
 type Hub struct {
-	clients    map[*Client]bool
+	clients    map[*models.Client]bool
 	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
+	register   chan *models.Client
+	unregister chan *models.Client
 }
 
 func (e *Engine) NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
+		clients:    make(map[*models.Client]bool),
 		broadcast:  make(chan []byte, 256),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+		register:   make(chan *models.Client),
+		unregister: make(chan *models.Client),
 	}
 }
 
@@ -72,16 +56,16 @@ func (h *Hub) Run() {
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send)
+				close(client.Send)
 			}
 
 		case msg := <-h.broadcast:
 			for c := range h.clients {
 				select {
-				case c.send <- msg:
+				case c.Send <- msg:
 				default:
 					delete(h.clients, c)
-					close(c.send)
+					close(c.Send)
 				}
 			}
 		}

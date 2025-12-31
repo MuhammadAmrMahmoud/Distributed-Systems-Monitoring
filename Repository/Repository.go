@@ -19,7 +19,7 @@ type IRepository interface {
 	RegisterService(ctx context.Context, service *models.ExternalService) error
 	GetAllServices(ctx context.Context) (map[uint]*models.ExternalService, error)
 	SaveServiceCheckLog(service models.ExternalService, status string, statusCode int, responseTimeMs int64, errMsg string) error
-	UpdateServiceState(ctx context.Context, service *models.ExternalService, success bool) (*StateChange, error)
+	UpdateServiceState(ctx context.Context, service *models.ExternalService, success bool) (*models.StateChange, error)
 	GetServiceByName(ctx context.Context, name string) (*models.ExternalService, error)
 	GetServiceCheckLogs(ctx context.Context, serviceID uint, limit int, offset int) ([]*models.ServiceCheckLog, error)
 }
@@ -103,12 +103,7 @@ func (r *DbRepository) SaveServiceCheckLog(service models.ExternalService, statu
 	return r.db.Create(&logEntry).Error
 }
 
-type StateChange struct {
-	From string
-	To   string
-}
-
-func (r *DbRepository) UpdateServiceState(ctx context.Context, service *models.ExternalService, success bool) (*StateChange, error) {
+func (r *DbRepository) UpdateServiceState(ctx context.Context, service *models.ExternalService, success bool) (*models.StateChange, error) {
 
 	previousStatus := service.Status
 
@@ -123,7 +118,7 @@ func (r *DbRepository) UpdateServiceState(ctx context.Context, service *models.E
 	}
 
 	if previousStatus != service.Status {
-		return &StateChange{
+		return &models.StateChange{
 			From: previousStatus,
 			To:   service.Status,
 		}, nil

@@ -186,9 +186,9 @@ func (e *Engine) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	client := &Client{
-		conn: conn,
-		send: make(chan []byte, 256),
+	client := &models.Client{
+		Conn: conn,
+		Send: make(chan []byte, 256),
 	}
 
 	GlobalHub.register <- client
@@ -212,7 +212,7 @@ func (e *Engine) HandleWebSocket(c *gin.Context) {
 	}()
 
 	go func() {
-		for message := range client.send {
+		for message := range client.Send {
 			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				log.Printf("[WS] write_error err=%v", err)
 				return

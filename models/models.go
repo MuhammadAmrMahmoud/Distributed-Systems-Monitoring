@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/gorilla/websocket"
+)
 
 // ExternalService represents a service to be monitored
 type ExternalService struct {
@@ -28,6 +32,26 @@ type ServiceCheckLog struct {
 	ErrorMessage      string          `json:"error_message,omitempty" gorm:"type:text"`
 	CheckedAt         time.Time       `json:"checked_at" gorm:"type:timestamp;not null;index:idx_service_time"`
 	ExternalService   ExternalService `json:"-" gorm:"foreignKey:ExternalServiceID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+type StateChange struct {
+	From string
+	To   string
+}
+
+
+type Client struct {
+	Conn *websocket.Conn
+	Send chan []byte
+}
+
+type ServiceStateChangeEvent struct {
+	Type      string    `json:"type"` // service_state_change
+	ServiceID uint      `json:"service_id"`
+	Name      string    `json:"name"`
+	From      string    `json:"from"`
+	To        string    `json:"to"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // TableName specifies the table name for ExternalService

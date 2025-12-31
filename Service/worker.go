@@ -1,7 +1,7 @@
 package service
 
 import (
-	"Distributed-Health-Monitoring/Repository"
+	"Distributed-Health-Monitoring/models"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -143,7 +143,7 @@ func (e *Engine) StartWorker(amqpURL, queueName string) error {
 	return nil
 }
 
-func LogStateTransition(serviceName string, change *Repository.StateChange) {
+func LogStateTransition(serviceName string, change *models.StateChange) {
 	log.Printf(
 		"[STATE_TRANSITION] service=%s from=%s to=%s at=%s",
 		serviceName,
