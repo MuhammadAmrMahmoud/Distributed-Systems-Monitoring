@@ -15,8 +15,9 @@ A distributed, event-driven system for monitoring external services and broadcas
 - [Installation & Setup](#installation--setup)
 - [Running the Application](#running-the-application)
 - [API Documentation](#api-documentation)
-- [gRPC Health Check](#grpc-health-check)
+- [Protocols](#protocols)
 - [WebSocket Events](#websocket-events)
+- [gRPC Health Check](#grpc-health-check)
 - [Database Schema](#database-schema)
 - [System Components](#system-components)
 - [Workflow](#workflow)
@@ -345,6 +346,7 @@ Content-Type: application/json
 {
   "name": "Example API",
   "url": "http://host.docker.internal:9000/health",       <!--if called from local machine use host.docker.internal instead of localhost -->
+  "protocol": "HTTP",                                     <!-- HTTP or gRPC are supported -->
   "http_method": "GET",
   "interval": 60,
   "timeout_seconds": 10,
@@ -420,6 +422,192 @@ GET /health-app/healthLogs/:serviceId?limit=100&offset=0
   ]
 }
 ```
+
+## Protocols
+
+The system uses three communication protocols to enable comprehensive health monitoring across different service types:
+
+### 1. HTTP/HTTPS (Health Check Protocol)
+
+**Purpose:** Monitor REST APIs and HTTP-based services
+
+**Characteristics:**
+- Executes actual HTTP requests to service endpoints
+- Measures response time and status codes
+- Supports multiple HTTP methods for flexibility
+- Status codes < 400 mark service as UP
+- Network-level failure detection
+
+**Supported HTTP Methods:**
+- `GET` - Retrieve health status (default)
+- `POST` - POST health check requests
+- `PUT` - PUT-based health checks
+- `DELETE` - DELETE operation checks
+- `PATCH` - PATCH operation checks
+
+**Health Check Configuration:**
+```json
+{
+  "name": "REST API Service",
+  "url": "https://api.example.com/health",
+  "protocol": "HTTP",
+  "http_method": "GET",
+  "interval": 30,
+  "timeout_seconds": 5,
+  "failure_threshold": 3
+}
+```
+
+**Health Check Behavior:**
+- Makes real HTTP request to the configured URL
+- Response status code < 400 = **UP**
+- Response status code ≥ 400 = **DOWN**
+- Timeout or connection error = **DOWN**
+- Tracks latency in milliseconds
+- Logs response status code and error messages
+
+**Example Workflow:**
+1. Scheduler creates job: `GET https://api.example.com/health`
+2. Worker executes request within 5-second timeout
+3. Response: HTTP 200 → Status = UP, Latency = 45ms
+4. Service state updated, client notified via WebSocket
+
+### 2. WebSocket (Real-time Events)
+
+**Purpose:** Deliver instant state change notifications to connected monitoring clients
+
+**Characteristics:**
+- Persistent TCP connection maintained by server
+- Full-duplex, bidirectional communication
+- Minimal latency event streaming
+- Automatic client-side updates without polling
+- Graceful connection handling
+
+**Connection Lifecycle:**
+```javascript
+// Connect to WebSocket hub
+const ws = new WebSocket("ws://localhost:8080/ws");
+
+// Handle connection established
+ws.onopen = () => {
+  console.log("Connected to health monitoring hub");
+};
+
+// Receive state change events
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+  console.log(`${message.name} changed from ${message.from} to ${message.to}`);
+};
+
+// Handle disconnection
+ws.onclose = () => {
+  console.log("Disconnected. Reconnecting...");
+  // Implement reconnection logic
+};
+```
+
+**Event Types Broadcast:**
+
+**Service State Change Event** - Sent when service status transitions (UP ↔ DOWN)
+```json
+{
+  "type": "service_state_change",
+  "service_id": 1,
+  "name": "Example API",
+  "from": "UP",
+  "to": "DOWN",
+  "timestamp": "2025-12-31T10:30:45Z"
+}
+```
+
+**How State Changes Trigger:**
+- Worker marks service DOWN after consecutive failures exceed threshold
+- Worker marks service UP after successful check following DOWN status
+- Event broadcasts only on actual state transition (not on every check)
+- All connected clients receive notification simultaneously
+
+**Broadcasting Mechanism:**
+```
+Worker Updates State → StateChangeEvent Created → Broadcast via WebSocket Hub → All Clients Notified
+```
+
+**Client Use Cases:**
+- Real-time monitoring dashboard updates
+- Instant alerting systems (Slack, email, SMS)
+- Live health metrics display
+- Automated incident response triggers
+
+### 3. gRPC (Microservice Health Verification)
+
+**Purpose:** Monitor distributed gRPC microservices efficiently
+
+**Characteristics:**
+- HTTP/2 based transport protocol
+- Verifies gRPC service connectivity
+- Measures connection establishment latency
+- Tracks gRPC connection state machine
+- Minimal overhead for microservice checks
+
+**Connection States Monitored:**
+| State | Description |
+|-------|-------------|
+| `Ready` | Service is healthy and accepting connections |
+| `Connecting` | Attempting to establish connection |
+| `Idle` | Connection established but idle |
+| `TransientFailure` | Temporary connectivity issue |
+| `Shutdown` | Service shutdown or unavailable |
+
+**gRPC Health Check Configuration:**
+```json
+{
+  "name": "gRPC Order Service",
+  "url": "grpc.example.com:50051",
+  "protocol": "gRPC",
+  "timeout_seconds": 5,
+  "interval": 30,
+  "failure_threshold": 3
+}
+```
+
+**Health Check Implementation:**
+```go
+// Worker calls gRPC checker with address and timeout
+result := grpc.Check_gRPC("grpc.example.com:50051", 5*time.Second)
+
+// Returns:
+// - IsHealthy: true if state == Ready
+// - Latency: Connection establishment time
+// - StatusCode: gRPC connection state
+// - Error: Connection error details (if any)
+```
+
+**gRPC Check Behavior:**
+- Initiates non-blocking connection to gRPC service
+- Connection state must be `Ready` for service to mark as UP
+- Any non-Ready state = DOWN
+- Tracks connection latency and error details
+- No service-level RPC calls required (connection check only)
+
+**Example Workflow:**
+1. Scheduler creates job for `grpc.example.com:50051`
+2. Worker dials gRPC endpoint with 5-second timeout
+3. Connection state = `Ready` → Status = UP, Latency = 12ms
+4. Service marked UP, WebSocket broadcasts to clients
+5. Next interval: repeat check
+
+### Protocol Comparison
+
+| Feature | HTTP | WebSocket | gRPC |
+|---------|------|-----------|------|
+| **Direction** | One-way (Client→Server) | Bidirectional | One-way (Client→Server) |
+| **Connection Type** | Request-response | Persistent | Connection verification |
+| **Latency** | Medium (per request) | Low (instant broadcast) | Very Low (connection check) |
+| **Bandwidth** | Medium | Low | Minimal |
+| **Target Services** | REST APIs, HTTP endpoints | Connected clients | gRPC microservices |
+| **Data Format** | JSON responses | JSON events | gRPC binary protocol |
+| **Typical Response Time** | 50-500ms | Instant (<1ms) | 5-50ms |
+| **Use Case** | Health check execution | State change notification | Microservice monitoring |
+| **Failure Detection** | HTTP status codes | Event delivery | Connection state |
 
 ## WebSocket Events
 
